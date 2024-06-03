@@ -136,3 +136,16 @@ def LoadNeuralModel(model, gnn_hypers, torch_device, model_location):
     model.eval()
 
     return model, checkpoint['inputs']
+
+def LoadNeuralModelRL(model, gnn_hypers, torch_device, model_location, policy_mod):
+    checkpoint = torch.load(model_location)
+    #model = checkpoint['model']
+    # instantiate the GNN
+    # model.load_state_dict(torch.load(model_location))
+    model.load_state_dict(checkpoint['model'])
+    model.eval()
+
+    policyNet.load_state_dict(checkpoint['model_policy'])
+    policyNet.eval()
+
+    return model, checkpoint['inputs'], policyNet
