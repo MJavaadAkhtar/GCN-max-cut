@@ -77,23 +77,23 @@ def gen_adj_matrix(nx_G):
     return adj_dict
 
 
-class GCNSoftmax(nn.Module):
-    def __init__(self, in_feats, hidden_size, num_classes, dropout, device):
-        super(GCNSoftmax, self).__init__()
-        self.dropout_frac = dropout
-        self.conv1 = GraphConv(in_feats, hidden_size).to(device)
-        self.conv2 = GraphConv(hidden_size, num_classes).to(device)
+# class GCNSoftmax(nn.Module):
+#     def __init__(self, in_feats, hidden_size, num_classes, dropout, device):
+#         super(GCNSoftmax, self).__init__()
+#         self.dropout_frac = dropout
+#         self.conv1 = GraphConv(in_feats, hidden_size).to(device)
+#         self.conv2 = GraphConv(hidden_size, num_classes).to(device)
+#
+#     def forward(self, g, inputs):
+#         # Basic forward pass
+#         h = self.conv1(g, inputs)
+#         h = F.relu(h)
+#         h = F.dropout(h, p=self.dropout_frac, training=self.training)
+#         h = self.conv2(g, h)
+#         h = F.softmax(h, dim=1)  # Apply softmax over the classes dimension
+#         # h = F.sigmoid(h)
 
-    def forward(self, g, inputs):
-        # Basic forward pass
-        h = self.conv1(g, inputs)
-        h = F.relu(h)
-        h = F.dropout(h, p=self.dropout_frac, training=self.training)
-        h = self.conv2(g, h)
-        h = F.softmax(h, dim=1)  # Apply softmax over the classes dimension
-        # h = F.sigmoid(h)
-
-        return h
+        # return h
 
 def get_gnn(n_nodes, gnn_hypers, opt_params, torch_device, torch_dtype):
     """
