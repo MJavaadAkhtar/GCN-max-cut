@@ -1,36 +1,95 @@
 import torch
-import random
-import os
-import numpy as np
 import networkx as nx
 import torch.nn as nn
 import torch.nn.functional as F
-import torch as th
-import matplotlib
-from collections import OrderedDict, defaultdict
-from networkx.algorithms.flow import shortest_augmenting_path
+
 from dgl.nn.pytorch import GraphConv
-from itertools import chain, islice, combinations
-from networkx.algorithms.approximation.clique import maximum_independent_set as mis
+from itertools import chain, islice
 from time import time
-from networkx.algorithms.approximation.maxcut import one_exchange
-
-def gen_adj_matrix(nx_G):
-    adj_dict = defaultdict(int)
-
-    for(u,v) in nx_G.edges:
-        adj_dict[(u, v)] = nx_G[u][v]['weight']
-        adj_dict[(v, u)] = nx_G[u][v]['weight']
-
-    for u in nx_G.nodes:
-        for i in nx_G.nodes:
-            if not adj_dict[(u, i)]:
-                adj_dict[(u, i)] = 0
-
-    return adj_dict
 
 
+# GNN class to be instantiated with specified param values
+class GCN_dev(nn.Module):
+    def __init__(self, in_feats, hidden_size, number_classes, dropout, device):
+        """
+        Initialize a new instance of the core GCN model of provided size.
+        Dropout is added in forward step.
 
+        Inputs:
+            in_feats: Dimension of the input (embedding) layer
+            hidden_size: Hidden layer size
+            dropout: Fraction of dropout to add between intermediate layer. Value is cached for later use.
+            device: Specifies device (CPU vs GPU) to load variables onto
+        """
+        super(GCN_dev, self).__init__()
+
+        self.dropout_frac = dropout
+        self.conv1 = GraphConv(in_feats, hidden_size).to(device)
+        self.conv2 = GraphConv(hidden_size, number_classes).to(device)
+
+    def forward(self, g, inputs):
+        """
+        Run forward propagation step of instantiated model.
+
+        Input:
+            self: GCN_dev instance
+            g: DGL graph object, i.e. problem definition
+            inputs: Input (embedding) layer weights, to be propagated through network
+        Output:
+            h: Output layer weights
+        """
+
+        # input step
+        h = self.conv1(g, inputs)
+        h = torch.relu(h)
+        h = F.dropout(h, p=self.dropout_frac)
+
+        # output step
+        h = self.conv2(g, h)
+        h = torch.sigmoid(h)
+
+        return h
+
+
+# Generate random graph of specified size and type,
+# with specified degree (d) or edge probability (p)
+def generate_graph(n, d=None, p=None, graph_type='reg', random_seed=0):
+    """
+    Helper function to generate a NetworkX random graph of specified type,
+    given specified parameters (e.g. d-regular, d=3). Must provide one of
+    d or p, d with graph_type='reg', and p with graph_type in ['prob', 'erdos'].
+
+    Input:
+        n: Problem size
+        d: [Optional] Degree of each node in graph
+        p: [Optional] Probability of edge between two nodes
+        graph_type: Specifies graph type to generate
+        random_seed: Seed value for random generator
+    Output:
+        nx_graph: NetworkX OrderedGraph of specified type and parameters
+    """
+    if graph_type == 'reg':
+        print(f'Generating d-regular graph with n={n}, d={d}, seed={random_seed}')
+        nx_temp = nx.random_regular_graph(d=d, n=n, seed=random_seed)
+    elif graph_type == 'prob':
+        print(f'Generating p-probabilistic graph with n={n}, p={p}, seed={random_seed}')
+        nx_temp = nx.fast_gnp_random_graph(n, p, seed=random_seed)
+    elif graph_type == 'erdos':
+        print(f'Generating erdos-renyi graph with n={n}, p={p}, seed={random_seed}')
+        nx_temp = nx.erdos_renyi_graph(n, p, seed=random_seed)
+    else:
+        raise NotImplementedError(f'!! Graph type {graph_type} not handled !!')
+
+    # Networkx does not enforce node order by default
+    nx_temp = nx.relabel.convert_node_labels_to_integers(nx_temp)
+    # Need to pull nx graph into OrderedGraph so training will work properly
+    nx_graph = nx.OrderedGraph()
+    nx_graph.add_nodes_from(sorted(nx_temp.nodes()))
+    nx_graph.add_edges_from(nx_temp.edges)
+    return nx_graph
+
+
+# helper function to convert Q dictionary to torch tensor
 def qubo_dict_to_torch(nx_G, Q, torch_dtype=None, torch_device=None):
     """
     Output Q matrix as torch tensor for given Q in dictionary format.
@@ -58,115 +117,124 @@ def qubo_dict_to_torch(nx_G, Q, torch_dtype=None, torch_device=None):
 
     return Q_mat
 
-def calculateMinCut(adj_matrix, output, terminal1 = 0, terminal2 = 4):
-    #output = (output.detach() >= 0.5) * 1
 
-    # if output[terminal1] == output[terminal2]:
-    #     return float("inf")
-    #print(adj_matrix, output)
-    loss = 0
-    for i in range(len(adj_matrix)):
-        for j in range(len(adj_matrix)):
-            if (output[i] > 0.5 and output[j] < 0.5) or (output[i] < 0.5 and output[j] > 0.5) :
-                loss+=adj_matrix[i][j]
+# Chunk long list
+def gen_combinations(combs, chunk_size):
+    yield from iter(lambda: list(islice(combs, chunk_size)), [])
 
-    return loss
 
-def partition_weight(adj, s):
+# helper function for custom loss according to Q matrix
+def loss_func(probs, Q_mat):
     """
-    Calculates the sum of weights of edges that are in different partitions.
+    Function to compute cost value for given probability of spin [prob(+1)] and predefined Q matrix.
 
-    :param adj: Adjacency matrix of the graph.
-    :param s: List indicating the partition of each edge (0 or 1).
-    :return: Sum of weights of edges in different partitions.
+    Input:
+        probs: Probability of each node belonging to each class, as a vector
+        Q_mat: QUBO as torch tensor
     """
-    s = np.array(s)
-    partition_matrix = np.not_equal.outer(s, s).astype(int)
-    weight = (adj * partition_matrix).sum() / 2
-    return weight
 
-def expected_partition_weight(adj, s):
+    probs_ = torch.unsqueeze(probs, 1)
+
+    # minimize cost = x.T * Q * x
+    cost = (probs_.T @ Q_mat @ probs_).squeeze()
+
+    return cost
+
+
+# Construct graph to learn on
+def get_gnn(n_nodes, gnn_hypers, opt_params, torch_device, torch_dtype):
     """
-    Calculates the expected sum of weights of edges that are in different partitions,
-    based on the probabilities in s.
+    Generate GNN instance with specified structure. Creates GNN, retrieves embedding layer,
+    and instantiates ADAM optimizer given those.
 
-    :param adj: Adjacency matrix of the graph.
-    :param s: List indicating the probability of each edge being in a certain partition.
-    :return: Expected sum of weights of edges in different partitions.
+    Input:
+        n_nodes: Problem size (number of nodes in graph)
+        gnn_hypers: Hyperparameters relevant to GNN structure
+        opt_params: Hyperparameters relevant to ADAM optimizer
+        torch_device: Whether to load pytorch variables onto CPU or GPU
+        torch_dtype: Datatype to use for pytorch variables
+    Output:
+        net: GNN instance
+        embed: Embedding layer to use as input to GNN
+        optimizer: ADAM optimizer instance
     """
-    s = np.array(s)
-    partition_matrix = np.outer(s, 1 - s) + np.outer(1 - s, s)
-    expected_weight = (adj * partition_matrix).sum() / 2
-    return expected_weight
+    dim_embedding = gnn_hypers['dim_embedding']
+    hidden_dim = gnn_hypers['hidden_dim']
+    dropout = gnn_hypers['dropout']
+    number_classes = gnn_hypers['number_classes']
 
-def hyperParameters_old(n = 100, d = 3, p = None, graph_type = 'reg', number_epochs = int(1e5),
-                    learning_rate = 1e-4, PROB_THRESHOLD = 0.5, tol = 1e-4, patience = 100):
-    dim_embedding = int(np.sqrt(n))    # e.g. 10
-    hidden_dim = int(dim_embedding/2)
+    # instantiate the GNN
+    net = GCN_dev(dim_embedding, hidden_dim, number_classes, dropout, torch_device)
+    net = net.type(torch_dtype).to(torch_device)
+    embed = nn.Embedding(n_nodes, dim_embedding)
+    embed = embed.type(torch_dtype).to(torch_device)
 
-    return n, d, p, graph_type, number_epochs, learning_rate, PROB_THRESHOLD, tol, patience, dim_embedding, hidden_dim
-
-def hyperParameters(n = 100, d = 3, p = None, graph_type = 'reg', number_epochs = int(1e5),
-                    learning_rate = 1e-4, PROB_THRESHOLD = 0.5, tol = 1e-4, patience = 100):
-    dim_embedding = int(np.sqrt(4096))    # e.g. 10
-    hidden_dim = int(dim_embedding/2)
-
-    return n, d, p, graph_type, number_epochs, learning_rate, PROB_THRESHOLD, tol, patience, dim_embedding, hidden_dim
+    # set up Adam optimizer
+    params = chain(net.parameters(), embed.parameters())
+    optimizer = torch.optim.Adam(params, **opt_params)
+    return net, embed, optimizer
 
 
-def calculateAllCut(q_torch, s):
-    '''
-
-    :param q_torch: The adjacent matrix of the graph
-    :param s: The binary output from the neural network. s will be in form of [[prob1, prob2, ..., prob n], ...]
-    :return: The calculated cut loss value
-    '''
-    if len(s) > 0:
-        totalCuts = len(s[0])
-        CutValue = 0
-        for i in range(totalCuts):
-            CutValue += partition_weight(q_torch, s[:,i])
-        return CutValue/2
-    return 0
-def calculateCut(q_torch, s):
-    return (q_torch * (1 - np.outer(s, s)) / 2).sum()
-
-def assignTerminals(terminalNodes, bitstrings, probs):
-    for node, partition in terminalNodes.items():
-        bitstrings[node] = torch.zeros_like(probs[node])  # Reset probabilities
-        bitstrings[node][partition] = 1  # Set probability to 1 for the designated partition
-
-    return bitstrings
-
-def partition_weight(adj, s):
+# Parent function to run GNN training given input config
+def run_gnn_training(q_torch, dgl_graph, net, embed, optimizer, number_epochs, tol, patience, prob_threshold):
     """
-    Calculates the sum of weights of edges that are in different partitions.
-
-    :param adj: Adjacency matrix of the graph.
-    :param s: List indicating the partition of each edge (0 or 1).
-    :return: Sum of weights of edges in different partitions.
+    Wrapper function to run and monitor GNN training. Includes early stopping.
     """
-    s = np.array(s)
-    partition_matrix = np.not_equal.outer(s, s).astype(int)
-    weight = (adj * partition_matrix).sum() / 2
-    return weight
+    # Assign variable for user reference
+    inputs = embed.weight
 
+    prev_loss = 1.  # initial loss value (arbitrary)
+    count = 0       # track number times early stopping is triggered
 
+    # initialize optimal solution
+    best_bitstring = torch.zeros((dgl_graph.number_of_nodes(),)).type(q_torch.dtype).to(q_torch.device)
+    best_loss = loss_func(best_bitstring.float(), q_torch)
 
+    t_gnn_start = time()
 
+    # Training logic
+    for epoch in range(number_epochs):
 
-def generate_terminal_nodes(graph, num_terminals, total_classes):
-    """
-    Randomly generate terminal node configurations for a given graph.
-    """
-    num_nodes = graph.number_of_nodes()
-    terminal_nodes = {}
+        # get logits/activations
+        probs = net(dgl_graph, inputs)[:, 0]  # collapse extra dimension output from model
 
-    # Randomly pick unique nodes to be terminals
-    terminal_indices = random.sample(range(num_nodes), num_terminals)
+        # build cost value with QUBO cost function
+        loss = loss_func(probs, q_torch)
+        loss_ = loss.detach().item()
 
-    # Randomly assign a partition to each terminal node
-    for node in terminal_indices:
-        terminal_nodes[node] = random.randint(0, total_classes - 1)
+        # Apply projection
+        bitstring = (probs.detach() >= prob_threshold) * 1
+        if loss < best_loss:
+            best_loss = loss
+            best_bitstring = bitstring
 
-    return terminal_nodes
+        if epoch % 1000 == 0:
+            print(f'Epoch: {epoch}, Loss: {loss_}')
+
+        # early stopping check
+        # If loss increases or change in loss is too small, trigger
+        if (abs(loss_ - prev_loss) <= tol) | ((loss_ - prev_loss) > 0):
+            count += 1
+        else:
+            count = 0
+
+        if count >= patience:
+            print(f'Stopping early on epoch {epoch} (patience: {patience})')
+            break
+
+        # update loss tracking
+        prev_loss = loss_
+
+        # run optimization with backpropagation
+        optimizer.zero_grad()  # clear gradient for step
+        loss.backward()        # calculate gradient through compute graph
+        optimizer.step()       # take step, update weights
+
+    t_gnn = time() - t_gnn_start
+    print(f'GNN training (n={dgl_graph.number_of_nodes()}) took {round(t_gnn, 3)}')
+    print(f'GNN final continuous loss: {loss_}')
+    print(f'GNN best continuous loss: {best_loss}')
+
+    final_bitstring = (probs.detach() >= prob_threshold) * 1
+
+    return net, epoch, final_bitstring, best_bitstring
