@@ -538,7 +538,7 @@ nx_generated_graph = {}
 terminals = {}
 
 for i in range (0, 500, 1):
-    nodes = random.randint(2000,5000)
+    nodes = random.randint(200,500)
     degree = random.randint(8,12)
     if (nodes * degree) % 2 != 0:
         i-=1
@@ -557,26 +557,26 @@ for i in range (0, 500, 1):
 # nx_generated_graph = {}
 # terminals = {}
 
-for i in range (501, 700, 1):
-    nodes = random.randint(300,800)
-    degree = random.randint(8,12)
-    if (nodes * degree) % 2 != 0:
-        i-=1
-        continue
-    nx_graph = generate_graph(n=nodes, d=degree, p=None, graph_type='reg', random_seed=i)
+# for i in range (501, 700, 1):
+#     nodes = random.randint(1000,1002)
+#     degree = random.randint(8,12)
+#     if (nodes * degree) % 2 != 0:
+#         i-=1
+#         continue
+#     nx_graph = generate_graph(n=nodes, d=degree, p=None, graph_type='reg', random_seed=i)
+#
+#     for u, v, d in nx_graph.edges(data=True):
+#         d['weight'] = 1
+#         d['capacity'] = 1
+#
+#     unique_random_numbers = generate_unique_random_numbers(nodes)
+#
+#     nx_generated_graph[i] = nx_graph
+#     terminals[i] = unique_random_numbers
+# # #
 
-    for u, v, d in nx_graph.edges(data=True):
-        d['weight'] = 1
-        d['capacity'] = 1
-
-    unique_random_numbers = generate_unique_random_numbers(nodes)
-
-    nx_generated_graph[i] = nx_graph
-    terminals[i] = unique_random_numbers
-# #
-
-save_object(nx_generated_graph, 'nx_generated_graph_nx_test_generated_graph_n800_4000_d8_12_t500.pkl')
-save_object(terminals, 'terminals_nx_test_generated_graph_n800_4000_d8_12_t500.pkl')
+save_object(nx_generated_graph, 'nx_generated_graph_nfull_20.pkl')
+save_object(terminals, 'terminals_nx_generated_graph_nfull_20.pkl')
 
 # ds = createGraphFromFolder_full(nx_generated_graph, terminals, 10000)
 # save_object(ds, 'nx_test_generated_graph_n800_4000_d8_12_t500.pkl')

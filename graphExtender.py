@@ -543,10 +543,10 @@ def createGraphFromFolder_full(all_graphs, all_terminals, max_nodes):
 nx_generated_graph = {}
 terminals = {}
 
-nx_generated_graph = open_file('nx_generated_graph_nx_test_generated_graph_n800_4000_d8_12_t500.pkl')
-terminals = open_file('terminals_nx_test_generated_graph_n800_4000_d8_12_t500.pkl')
+nx_generated_graph = open_file('nx_generated_graph_nfull_20.pkl')
+terminals = open_file('terminals_nx_generated_graph_nfull_20.pkl')
 # save_object(nx_generated_graph, 'nx_generated_graph_nx_test_generated_graph_n800_4000_d8_12_t500.pkl')
 # save_object(terminals, 'terminals_nx_test_generated_graph_n800_4000_d8_12_t500.pkl')
 
-ds = createGraphFromFolder_full(nx_generated_graph, terminals, 10000)
-save_object(ds, 'nx_test_generated_graph_n800_4000_d8_12_t500.pkl')
+ds = createGraphFromFolder_full(nx_generated_graph, terminals, 502)
+save_object(ds, 'nx_DS_generated_graph_nfull_20.pkl')
