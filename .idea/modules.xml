@@ -3,8 +3,6 @@
   <component name="ProjectModuleManager">
     <modules>
       <module fileurl="file://$PROJECT_DIR$/.idea/COP.iml" filepath="$PROJECT_DIR$/.idea/COP.iml" />
-      <module fileurl="file://$PROJECT_DIR$/../../work/WorkItem/.idea/WorkItem.iml" filepath="$PROJECT_DIR$/../../work/WorkItem/.idea/WorkItem.iml" />
-      <module fileurl="file://$USER_HOME$/Downloads/erdos_neu-main/.idea/erdos_neu-main.iml" filepath="$USER_HOME$/Downloads/erdos_neu-main/.idea/erdos_neu-main.iml" />
     </modules>
   </component>
 </project>
