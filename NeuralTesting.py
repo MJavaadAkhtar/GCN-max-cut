@@ -253,7 +253,9 @@ def barPlot_3_speedup(
     plt.tight_layout()
     plt.show()
 
-def barPlot_2_speedUp(heuristic_cut, neural_cut, labels, std_percent,  title = 'Balanced 3-way max-cut', y_lim=None):
+def barPlot_2_speedUp(heuristic_cut, neural_cut, labels, std_percent,
+                      title = 'Balanced 3-way max-cut', y_lim=None,
+                      neural_cut_post = []):
     # Input validation
     if not (len(heuristic_cut) == len(neural_cut) == len(labels)):
         raise ValueError("All input lists must have the same length.")
@@ -269,6 +271,7 @@ def barPlot_2_speedUp(heuristic_cut, neural_cut, labels, std_percent,  title = '
     # Plot the bars
     # bar1 = plt.bar(index, heuristic_cut, bar_width, label='Cplex', color='skyblue')
     bar2 = plt.bar(index, neural_cut, bar_width, label='GCN', color='orange')
+    bar2 = plt.bar(index + bar_width, neural_cut_post, bar_width, label='GCN with post-processing', color='green')
 
     # Add labels, title, and legend
     # Add labels, title, and legend
@@ -289,6 +292,17 @@ def barPlot_2_speedUp(heuristic_cut, neural_cut, labels, std_percent,  title = '
         bar_width,
         label='Neural Network',
         color='orange',
+        yerr=nn_std_abs,   # <--- Attach error bars here
+        capsize=5,
+        ecolor='black'
+    )
+
+    bar3 = plt.bar(
+        index + bar_width ,
+        neural_cut_post,
+        bar_width,
+        label='Neural Network',
+        color='green',
         yerr=nn_std_abs,   # <--- Attach error bars here
         capsize=5,
         ecolor='black'
@@ -321,7 +335,40 @@ def barPlot_2_speedUp(heuristic_cut, neural_cut, labels, std_percent,  title = '
         plt.text(
             x_pos,                      # X position
             text_y,                  # Y position (middle of the bar)
-            f'{neural_cut[i]:.0f}s',       # Text to display
+            f'{neural_cut[i]:.2f}s',       # Text to display
+            ha='center',                # Horizontal alignment
+            va='center',                # Vertical alignment
+            color=text_color,           # Text color
+            fontsize=10,                # Font size
+            fontweight='bold'           # Font weight
+        )
+
+
+
+        # Calculate the percentage
+        percentage = (neural_cut_post[i] / heuristic_cut[i]) * 100 if heuristic_cut[i] != 0 else 0
+
+        # Get the position and height of the 'Neural Network' bar
+        x_pos = index[i] + bar_width
+        y_pos = neural_cut_post[i]
+
+
+        # Position the text above the bar
+        y_pos = neural_cut_post[i]
+
+        # Small offset so text doesn't sit exactly on top of the bar
+        offset = 0.02 * neural_cut_post[i]  # 2% of the bar's height, adjust as needed
+        text_y = y_pos + offset+1
+
+        # Choose text color based on bar height for readability
+        # (Optional logic)
+        text_color = 'black' #if cut > 0.3 * max(cuts) else 'black'
+
+        # Place the percentage text inside the bar
+        plt.text(
+            x_pos,                      # X position
+            text_y,                  # Y position (middle of the bar)
+            f'{neural_cut_post[i]:.0f}s',       # Text to display
             ha='center',                # Horizontal alignment
             va='center',                # Vertical alignment
             color=text_color,           # Text color
@@ -861,7 +908,8 @@ def barPlot_3_speedup_dot(
     plt.tight_layout()
     plt.show()
 
-def barPlot_2(heuristic_cut, neural_cut, labels, std_percent,  title = 'Balanced 3-way max-cut', nn_std_percent_cplex_abs = []):
+def barPlot_2(heuristic_cut, neural_cut, labels, std_percent,  title = 'Balanced 3-way max-cut',
+              nn_std_percent_cplex = [], neural_cut_post = []):
     # Input validation
     if not (len(heuristic_cut) == len(neural_cut) == len(labels)):
         raise ValueError("All input lists must have the same length.")
@@ -869,7 +917,7 @@ def barPlot_2(heuristic_cut, neural_cut, labels, std_percent,  title = 'Balanced
     # Number of groups
     n_groups = len(heuristic_cut)
     index = np.arange(n_groups)
-    bar_width = 0.35
+    bar_width = 0.25
 
     # Create the plot
     plt.figure(figsize=(12, 6))  # Adjusted the figure size for better visibility
@@ -877,6 +925,7 @@ def barPlot_2(heuristic_cut, neural_cut, labels, std_percent,  title = 'Balanced
     # Plot the bars
     bar1 = plt.bar(index, heuristic_cut, bar_width, label='Cplex', color='skyblue')
     bar2 = plt.bar(index + bar_width, neural_cut, bar_width, label='GCN', color='orange')
+    bar3 = plt.bar(index + 2*bar_width, neural_cut_post, bar_width, label='GCN with post-processing', color='green')
 
     # Add labels, title, and legend
     # Add labels, title, and legend
@@ -917,29 +966,44 @@ def barPlot_2(heuristic_cut, neural_cut, labels, std_percent,  title = 'Balanced
         capsize=5,
         ecolor='black'
     )
+
+    nn_std_abs = [
+        (std_percent[i] / 100.0) * neural_cut[i]
+        for i in range(n_groups)
+    ]
+
+    bar3 = plt.bar(
+        index + 2 * bar_width,
+        neural_cut_post,
+        bar_width,
+        label='Neural Network',
+        color='green',
+        yerr=nn_std_abs,   # <--- Attach error bars here
+        capsize=5,
+        ecolor='black'
+    )
+
     # Calculate percentages and add them inside the 'Neural Network' bars
+    # Example: Annotate the Randomizer & Neural Network bars with a relative percentage
     for i in range(n_groups):
-        # Calculate the percentage
-        percentage = (neural_cut[i] / heuristic_cut[i]) * 100 if heuristic_cut[i] != 0 else 0
+        cuts = [neural_cut[i],  neural_cut_post[i]]
+        for j, cut in enumerate(cuts):
+            # Calculate the percentage relative to the Heuristic bar
+            base = heuristic_cut[i] if heuristic_cut[i] else 1
+            percentage = (cut / base) * 100
 
-        # Get the position and height of the 'Neural Network' bar
-        x_pos = index[i] + bar_width
-        y_pos = neural_cut[i]
+            x_pos = index[i] + (j + 1) * bar_width
+            y_pos = cut
 
-        # Choose text color based on bar height for readability
-        text_color = 'white' if y_pos > max(neural_cut) * 0.1 else 'black'
-
-        # Place the percentage text inside the bar
-        plt.text(
-            x_pos,                      # X position
-            y_pos / 2,                  # Y position (middle of the bar)
-            f'{percentage:.0f}%',       # Text to display
-            ha='center',                # Horizontal alignment
-            va='center',                # Vertical alignment
-            color=text_color,           # Text color
-            fontsize=10,                # Font size
-            fontweight='bold'           # Font weight
-        )
+            text_color = 'white' if y_pos > max(cuts) * 0.3 else 'black'
+            plt.text(
+                x_pos, y_pos * 0.5,
+                f'{percentage:.0f}%',
+                ha='center', va='center',
+                color=text_color,
+                fontsize=10,
+                fontweight='bold'
+            )
 
     # Adjust layout and display the plot
     plt.tight_layout()

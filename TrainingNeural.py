@@ -624,9 +624,7 @@ def run_gnn_training2(dataset, net, optimizer, number_epochs, tol, patience, los
     embed = embed.type(torch_dtype).to(torch_device)
     inputs = embed.weight
 
-    ds_list = ['../Jobs/nx_test_generated_graph_n800_4000_d8_12_t500_200.pkl',
-               '../Jobs/nx_test_generated_graph_n800_4000_d8_12_t500_400.pkl',
-               '../Jobs/nx_test_generated_graph_n800_4000_d8_12_t500.pkl']
+    ds_list = ['./nx_test_generated_graph_n200_300_d8_12_t500.pkl']
 
     for epoch in range(number_epochs):
 
@@ -771,7 +769,7 @@ def calculate_HC_vectorized(s, adjacency_matrix):
     partition_prob_matrix = s @ s.T
 
     # Compute the cut value by summing weights of edges that connect nodes in different partitions
-    cut_value = adjacency_matrix * (1 - extend_matrix_torch(partition_prob_matrix, 10000))
+    cut_value = adjacency_matrix * (1 - extend_matrix_torch(partition_prob_matrix, 1000))
 
     # Sum up the contributions for all edges
     loss = torch.sum(cut_value) / 2  # Divide by 2 to correct for double-counting
@@ -788,6 +786,17 @@ def loss_terminal(s, adjacency_matrix,  A=0, C=1, penalty=1000):
     # loss += penalty* terminal_independence_penalty(s, [0,1,2])
     return loss
 
-trained_net, bestLost, epoch, inp, lossList = train1('_10000MaxwayCut_LossExp8_loss.pth', '../Jobs/nx_test_generated_graph_n800_4000_d8_12_t500_200.pkl', 10000)
 
-save_object([trained_net, bestLost, epoch, inp, lossList], 'trained_data.pkl')
+start_time = time()
+
+trained_net, bestLost, epoch, inp, lossList = train1(
+    '_1000_newMaxwayCut_LossExp8_loss.pth',
+    './nx_test_generated_graph_n200_300_d8_12_t500.pkl',
+    1000
+)
+
+end_time = time()
+runtime = end_time - start_time
+
+print(f"Runtime: {runtime:.2f} seconds")
+save_object([trained_net, bestLost, epoch, inp, lossList], 'trained__data.pkl')
